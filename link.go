@@ -1,7 +1,6 @@
 package mpthSim
 
 import (
-	"fmt"
 	"math/rand"
 	"sync"
 	"time"
@@ -46,14 +45,14 @@ func (l *Link) ProcessPackets() {
 			wg.Add(1)
 			go l.delayAndSend(payload, &wg) // Delay and send the packet
 		} else {
-			fmt.Println("A loss occured")
+			debugL("A loss occured")
 		}
 	}
 
 	// If the Input channel was closed, then we close the out channel after
 	// sending all
 	wg.Wait()
-	fmt.Println("Closing link Channel")
+	debugL("Closing link Channel")
 	close(l.Out)
 }
 
@@ -63,6 +62,7 @@ func (l *Link) delayAndSend(payload []byte, wg *sync.WaitGroup) {
 	<-time.After(l.delay) // Delay the packet
 	l.Out <- payload      // Send packet to the output channel
 	debugL("Sent Packet")
-	fmt.Println("Sent Packet")
+	// debugL("Sent Packet")
+	debugL("Sent packet: ", payload)
 	wg.Done() // Update the information of the waitgroup
 }
