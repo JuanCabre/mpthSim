@@ -1,4 +1,4 @@
-# MTPTH-Sim
+# MPTH-Sim
 
 This repository contains both a simulator and a library to simulate network
 coded multipath transmissions. The goal is to simulate earth-earth and
