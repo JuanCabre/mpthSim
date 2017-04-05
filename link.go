@@ -44,7 +44,7 @@ func (l *Link) ProcessPackets() {
 		// If there are no losses, send the packet
 		if rand.Float64() > l.lossProb {
 			wg.Add(1)
-			go l.DelayAndSend(payload, &wg) // Delay and send the packet
+			go l.delayAndSend(payload, &wg) // Delay and send the packet
 		} else {
 			fmt.Println("A loss occured")
 		}
