@@ -59,7 +59,7 @@ func (l *Link) ProcessPackets() {
 
 // DelayAndSend receives a payload and waits for l.delay before sending it to
 // the output channel of the link
-func (l *Link) DelayAndSend(payload []byte, wg *sync.WaitGroup) {
+func (l *Link) delayAndSend(payload []byte, wg *sync.WaitGroup) {
 	<-time.After(l.delay) // Delay the packet
 	l.Out <- payload      // Send packet to the output channel
 	debugL("Sent Packet")
