@@ -1,7 +1,9 @@
 # MTPTH-Sim
 
-This repository is both a simulator and a library to simulate network coded
-multipath transmissions.
+This repository contains both a simulator and a library to simulate network
+coded multipath transmissions. The goal is to simulate earth-earth and
+aircraft-earth communications over GEO and LEO satellites, and HAPS (high
+altitude platform system).
 
 ## Components
 
