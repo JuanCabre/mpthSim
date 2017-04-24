@@ -35,7 +35,7 @@ func newNode(rate float64) *Node {
 }
 
 // NewEncoderNode creates a node with a kodo Encoder. It takes an encoder
-// factory as an arguement, which it uses to create the encoder
+// factory as an argument, which it uses to create the encoder
 func NewEncoderNode(factory *kodo.EncoderFactory, rate float64) *Node {
 	n := newNode(rate)
 	n.Encoder = factory.Build()
@@ -50,8 +50,18 @@ func (n *Node) SetConstSymbols() {
 }
 
 // NewDecoderNode creates a node with a kodo Encoder. It takes an encoder
-// factory as an arguement, which it uses to create the encoder
+// factory as an argument, which it uses to create the encoder
 func NewDecoderNode(factory *kodo.DecoderFactory, rate float64) *Node {
+	n := newNode(rate)
+	n.Decoder = factory.Build()
+	n.Data = make([]byte, n.Decoder.BlockSize())
+	n.Decoder.SetMutableSymbols(&n.Data[0], n.Decoder.BlockSize())
+	return n
+}
+
+// NewRecoderNode creates a node with a kodo Encoder. It takes an encoder
+// factory as an argument, which it uses to create the encoder
+func NewRecoderNode(factory *kodo.DecoderFactory, rate float64) *Node {
 	n := newNode(rate)
 	n.Decoder = factory.Build()
 	n.Data = make([]byte, n.Decoder.BlockSize())
@@ -73,14 +83,15 @@ func (n *Node) SendEncodedPackets() {
 	t := float64(n.Encoder.PayloadSize()) / float64(n.rate) * 1000000000 //nS
 	debugN("Sending a packet every", time.Duration(t)*time.Nanosecond)
 	payload := make([]byte, n.Encoder.PayloadSize())
-	finished := false
-	for !finished {
+
+	for {
+
 		select {
 		case <-n.Done: // The decoder is ready
 			for _, output := range n.Outputs {
 				close(output)
 			}
-			finished = true
+			return
 		case <-time.After(time.Duration(t) * time.Nanosecond):
 			for _, output := range n.Outputs {
 				n.Encoder.WritePayload(&payload[0])
@@ -90,12 +101,46 @@ func (n *Node) SendEncodedPackets() {
 	}
 }
 
-func (n *Node) ReceiveCodedPackets(done chan<- struct{}) {
+func (n *Node) RecodeAndSend() {
+	t := float64(n.Decoder.PayloadSize()) / float64(n.rate) * 1000000000 //nS
+	debugN("Sending a recoded packet every", time.Duration(t)*time.Nanosecond)
+
+	// Constantly read packets
+	go func() {
+		for payload := range n.mergeInputs() {
+			n.Decoder.ReadPayload(&payload[0])
+		}
+	}()
+
+	payload := make([]byte, n.Decoder.PayloadSize())
+	for {
+
+		select {
+		case <-n.Done: // The decoder is ready
+			for _, output := range n.Outputs {
+				close(output)
+			}
+			return
+		case <-time.After(time.Duration(t) * time.Nanosecond):
+			for _, output := range n.Outputs {
+				n.Decoder.WritePayload(&payload[0])
+				output <- payload
+			}
+		}
+	}
+}
+
+func (n *Node) ReceiveCodedPackets(done ...chan<- struct{}) {
 	// payload := make([]byte, n.Encoder.PayloadSize())
 	for payload := range n.mergeInputs() {
 		n.Decoder.ReadPayload(&payload[0])
+		fmt.Println("Decoder rank: ", n.Decoder.Rank())
 		if n.Decoder.IsComplete() {
-			close(done)
+			// Close all done channels
+			for _, d := range done {
+				close(d)
+			}
+			return
 		}
 	}
 }
