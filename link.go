@@ -40,6 +40,8 @@ func (l *Link) ProcessPackets() {
 
 	for payload := range l.In {
 		debugL("received Packet")
+		// debugL("Received packet: %v", payload)
+
 		// If there are no losses, send the packet
 		if rand.Float64() > l.lossProb {
 			wg.Add(1)
@@ -63,6 +65,6 @@ func (l *Link) delayAndSend(payload []byte, wg *sync.WaitGroup) {
 	l.Out <- payload      // Send packet to the output channel
 	debugL("Sent Packet")
 	// debugL("Sent Packet")
-	debugL("Sent packet: ", payload)
+	// debugL("Sent packet: %v", payload)
 	wg.Done() // Update the information of the waitgroup
 }
