@@ -61,9 +61,6 @@ func main() {
 
 	decoderNode.ReceiveCodedPackets(recoderNode.Done, encoderNode.Done)
 
-	// for {
-	// }
-
 	// Check if we properly decoded the data
 	for i, v := range encoderNode.Data {
 		if v != decoderNode.Data[i] {
