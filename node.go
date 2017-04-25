@@ -131,7 +131,6 @@ func (n *Node) RecodeAndSend() {
 }
 
 func (n *Node) ReceiveCodedPackets(done ...chan<- struct{}) {
-	// payload := make([]byte, n.Encoder.PayloadSize())
 	for payload := range n.mergeInputs() {
 		n.Decoder.ReadPayload(&payload[0])
 		fmt.Println("Decoder rank: ", n.Decoder.Rank())
@@ -171,29 +170,4 @@ func (n *Node) mergeInputs() chan []byte {
 	}()
 
 	return merged
-}
-
-func (n *Node) GeneratePackets() {
-	for {
-		select {
-		case <-n.Done:
-			close(n.Outputs[0])
-			return
-		case <-time.After(10 * time.Millisecond):
-			n.Outputs[0] <- []byte("Hello world")
-		}
-	}
-}
-
-func (n *Node) ConsumePacket(m int, done chan<- struct{}) {
-	i := 0
-	for packet := range n.Inputs[0] {
-		fmt.Println("Destination Received a packet: ", string(packet))
-		i++
-		if i >= m {
-			break
-		}
-	}
-	fmt.Println(m, "packets consumed")
-	close(done)
 }
