@@ -18,20 +18,30 @@ type Node struct {
 	Inputs      chan []byte
 	InputsWg    sync.WaitGroup
 	InputsCount uint32
-	Outputs     []chan []byte
+	InputLinks  []*Link
+	OutputLinks []*Link
 	// TTL is the time to live for a recoder
-	TTL  time.Duration
-	Done chan struct{}
+	Done      chan struct{}
+	ResetChan chan struct{}
 	// Transmission rate in B/s
 	rate    float64
 	Encoder *kodo.Encoder
 	Decoder *kodo.Decoder
 	Data    []byte
+
+	Transmissions uint64
+}
+
+type payloadWriter interface {
+	WritePayload(*uint8) uint32
+	PayloadSize() uint32
+	Rank() uint32
 }
 
 func newNode(rate float64) *Node {
 	n := new(Node)
 	n.Done = make(chan struct{})
+	n.ResetChan = make(chan struct{})
 	n.rate = rate
 	return n
 }
@@ -71,8 +81,9 @@ func NewRecoderNode(factory *kodo.DecoderFactory, rate float64) *Node {
 	return n
 }
 
-func (n *Node) AddInput(in chan []byte) {
+func (n *Node) AddInput(l *Link) {
 
+	n.InputLinks = append(n.InputLinks, l)
 	n.InputsWg.Add(1)
 	// The first time it is called...
 	if n.InputsCount == 0 {
@@ -83,7 +94,7 @@ func (n *Node) AddInput(in chan []byte) {
 			close(n.Inputs)
 		}()
 		// Create the input channel
-		n.Inputs = make(chan []byte, 5000)
+		n.Inputs = make(chan []byte, 10000)
 	}
 	n.InputsCount++
 
@@ -94,79 +105,149 @@ func (n *Node) AddInput(in chan []byte) {
 			n.Inputs <- val
 		}
 		n.InputsWg.Done()
+		n.InputsCount--
 	}
-	go merger(in)
+	go merger(l.Out)
 
 }
 
-func (n *Node) AddOutput(out chan []byte) {
-	n.Outputs = append(n.Outputs, out)
+func (n *Node) AddOutput(l *Link) {
+	n.OutputLinks = append(n.OutputLinks, l)
 }
 
 // SendEncodedPackets produces encoded packets and sends them through all the
 // output channels
 func (n *Node) SendEncodedPackets() {
-	t := float64(n.Encoder.PayloadSize()) / float64(n.rate) * 1000000000 //nS
+	t := float64(n.Encoder.SymbolSize()) / float64(n.rate) * 1000000000 //nS
 	debugN("Sending a packet every %v", time.Duration(t)*time.Nanosecond)
 
 	for {
-
 		select {
 		case <-n.Done: // The decoder is ready
-			for _, output := range n.Outputs {
-				close(output)
+			for _, output := range n.OutputLinks {
+				go close(output.In)
 			}
+			fmt.Println("Encoder: Got signal done from decoder")
 			return
 		case <-time.After(time.Duration(t) * time.Nanosecond):
-			for _, output := range n.Outputs {
-				payload := make([]byte, n.Encoder.PayloadSize())
-				n.Encoder.WritePayload(&payload[0])
-				fmt.Printf("%T: &payload=%p | &payload[0]=%p | payload[:]=%v\n", payload, &payload, &payload[0], payload)
-				output <- payload
-			}
+			n.sendPayloads(n.Encoder)
 		}
 	}
 }
 
 func (n *Node) RecodeAndSend() {
-	t := float64(n.Decoder.PayloadSize()) / float64(n.rate) * 1000000000 //nS
+	t := float64(n.Decoder.SymbolSize()) / float64(n.rate) * 1000000000 //nS
 	debugN("Sending a recoded packet every", time.Duration(t)*time.Nanosecond)
+	fmt.Println("Recoder started")
 
 	// Constantly read packets
 	go func() {
 		for payload := range n.Inputs {
 			n.Decoder.ReadPayload(&payload[0])
+			// fmt.Println("Recoder rank: ", n.Decoder.Rank())
+
 		}
 	}()
 
-	payload := make([]byte, n.Decoder.PayloadSize())
 	for {
 
 		select {
 		case <-n.Done: // The decoder is ready
-			for _, output := range n.Outputs {
-				close(output)
+			for _, output := range n.OutputLinks {
+				fmt.Println("Recoder: Got signal done from decoder")
+				go close(output.In)
 			}
 			return
 		case <-time.After(time.Duration(t) * time.Nanosecond):
-			for _, output := range n.Outputs {
-				n.Decoder.WritePayload(&payload[0])
-				output <- payload
-			}
+			n.sendPayloads(n.Decoder)
+		case <-n.ResetChan:
+			n.ResetChan = make(chan struct{})
+			return
 		}
 	}
 }
 
-func (n *Node) ReceiveCodedPackets(done ...chan<- struct{}) {
-	for payload := range n.Inputs {
-		n.Decoder.ReadPayload(&payload[0])
-		fmt.Println("Decoder rank: ", n.Decoder.Rank())
-		if n.Decoder.IsComplete() {
-			// Close all done channels
-			for _, d := range done {
-				close(d)
+func (n *Node) ReceiveCodedPackets(wg *sync.WaitGroup, done ...chan<- struct{}) {
+	doneIsClosed := false
+
+	for !n.Decoder.IsComplete() {
+		for payload := range n.Inputs {
+			if doneIsClosed {
+				continue
 			}
-			return
+			n.Decoder.ReadPayload(&payload[0])
+			debugN("Decoder rank: ", n.Decoder.Rank())
+			if n.Decoder.IsComplete() {
+				// Close all done channels
+				for _, d := range done {
+					close(d)
+				}
+				doneIsClosed = true
+			}
 		}
 	}
+	wg.Done()
 }
+
+func (n *Node) Reset(factory *kodo.DecoderFactory) {
+	close(n.ResetChan) // Signal a reset
+	fmt.Println("Recoder Reset")
+	for _, input := range n.InputLinks {
+		input.DestGone = nil
+	}
+
+	// Close all current outputs
+	for _, output := range n.OutputLinks {
+		close(output.In)
+	}
+	// Reset the Outputs array
+	n.OutputLinks = make([]*Link, 0)
+	n.InputLinks = make([]*Link, 0)
+
+	kodo.DeleteDecoder(n.Decoder) // Delete the recoder
+
+	n.Decoder = factory.Build() // Rebuild the recoder
+	n.Data = make([]byte, n.Decoder.BlockSize())
+	n.Decoder.SetMutableSymbols(&n.Data[0], n.Decoder.BlockSize())
+}
+
+func (n *Node) sendPayloads(coder payloadWriter) {
+	if coder.Rank() == 0 {
+		return
+	}
+
+	tmpOutputs := n.OutputLinks[:0]
+	for i, out := range n.OutputLinks {
+		if n.OutputLinks[i].DestGone != nil {
+			tmpOutputs = append(tmpOutputs, out)
+			payload := make([]byte, coder.PayloadSize())
+			coder.WritePayload(&payload[0])
+			out.In <- payload
+			n.Transmissions++
+		} else {
+			close(out.In)
+		}
+	}
+	n.OutputLinks = tmpOutputs
+}
+
+// func (n *Node) sendPayloads(coder payloadWriter) {
+// 	if coder.Rank() == 0 {
+// 		return
+// 	}
+
+// 	for i, out := range n.OutputLinks {
+// 		if n.OutputLinks[i].DestGone != nil {
+// 			payload := make([]byte, coder.PayloadSize())
+// 			coder.WritePayload(&payload[0])
+// 			out.In <- payload
+// 			n.Transmissions++
+// 		} else {
+// 			close(out.In)
+// 			n.OutputLinks[i] = n.OutputLinks[len(n.OutputLinks)-1]
+// 			n.OutputLinks[len(n.OutputLinks)-1] = nil
+// 			n.OutputLinks = n.OutputLinks[:len(n.OutputLinks)-1]
+// 			break
+// 		}
+// 	}
+// }
