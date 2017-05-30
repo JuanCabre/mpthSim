@@ -48,7 +48,7 @@ func main() {
 	// Set the number of symbols (i.e. the generation size in RLNC
 	// terminology) and the size of a symbol in bytes
 	var symbols, symbolSize uint32 = 40, 1000
-	var rate float64 = 5000
+	var rate uint64 = 5000
 
 	// Initialization of encoder and decoder
 	encoderFactory := kodo.NewEncoderFactory(kodo.FullVector,

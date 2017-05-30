@@ -24,7 +24,7 @@ type Node struct {
 	Done      chan struct{}
 	ResetChan chan struct{}
 	// Transmission rate in B/s
-	rate    float64
+	rate    uint64
 	Encoder *kodo.Encoder
 	Decoder *kodo.Decoder
 	Data    []byte
@@ -38,7 +38,7 @@ type payloadWriter interface {
 	Rank() uint32
 }
 
-func newNode(rate float64) *Node {
+func newNode(rate uint64) *Node {
 	n := new(Node)
 	n.Done = make(chan struct{})
 	n.ResetChan = make(chan struct{})
@@ -48,7 +48,7 @@ func newNode(rate float64) *Node {
 
 // NewEncoderNode creates a node with a kodo Encoder. It takes an encoder
 // factory as an argument, which it uses to create the encoder
-func NewEncoderNode(factory *kodo.EncoderFactory, rate float64) *Node {
+func NewEncoderNode(factory *kodo.EncoderFactory, rate uint64) *Node {
 	n := newNode(rate)
 	n.Encoder = factory.Build()
 	n.Data = make([]byte, n.Encoder.BlockSize())
@@ -63,7 +63,7 @@ func (n *Node) SetConstSymbols() {
 
 // NewDecoderNode creates a node with a kodo Encoder. It takes an encoder
 // factory as an argument, which it uses to create the encoder
-func NewDecoderNode(factory *kodo.DecoderFactory, rate float64) *Node {
+func NewDecoderNode(factory *kodo.DecoderFactory, rate uint64) *Node {
 	n := newNode(rate)
 	n.Decoder = factory.Build()
 	n.Data = make([]byte, n.Decoder.BlockSize())
@@ -73,7 +73,7 @@ func NewDecoderNode(factory *kodo.DecoderFactory, rate float64) *Node {
 
 // NewRecoderNode creates a node with a kodo Encoder. It takes an encoder
 // factory as an argument, which it uses to create the encoder
-func NewRecoderNode(factory *kodo.DecoderFactory, rate float64) *Node {
+func NewRecoderNode(factory *kodo.DecoderFactory, rate uint64) *Node {
 	n := newNode(rate)
 	n.Decoder = factory.Build()
 	n.Data = make([]byte, n.Decoder.BlockSize())
