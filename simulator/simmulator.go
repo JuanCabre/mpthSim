@@ -56,6 +56,7 @@ func main() {
 	linkCount := 0
 	for i := 0; i < 3; i++ {
 		recoders = append(recoders, mpthSim.NewRecoderNode(decoderFactory, rate))
+		recoders[i].NodeID = byte(i)
 		recoders[i].AddInput(links[linkCount])
 		recoders[i].AddOutput(links[linkCount+1])
 		linkCount += 2
@@ -118,7 +119,7 @@ func main() {
 
 	runTime := time.Since(start).Seconds()
 	res.Latency = append(res.Latency, runTime)
-	res.RxPackets = append(res.RxPackets, 100)
+	res.RxPackets = append(res.RxPackets, decoderNode.RxPackets)
 
 	myres, err := json.Marshal(res)
 	if err != nil {
@@ -142,8 +143,8 @@ func main() {
 }
 
 type Result struct {
-	Latency   []float64 `json:"Latency[s]"`
-	RxPackets []uint32  `json:"RxPackets"`
+	Latency   []float64  `json:"Latency[s]"`
+	RxPackets [][]uint32 `json:"RxPackets"`
 }
 
 // func NewResult() *Result {

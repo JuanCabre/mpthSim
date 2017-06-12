@@ -29,6 +29,9 @@ type Node struct {
 	Decoder *kodo.Decoder
 	Data    []byte
 
+	NodeID    byte
+	RxPackets []uint32
+
 	Transmissions uint64
 }
 
@@ -65,6 +68,7 @@ func (n *Node) SetConstSymbols() {
 // factory as an argument, which it uses to create the encoder
 func NewDecoderNode(factory *kodo.DecoderFactory, rate uint64) *Node {
 	n := newNode(rate)
+	n.RxPackets = make([]uint32, 3)
 	n.Decoder = factory.Build()
 	n.Data = make([]byte, n.Decoder.BlockSize())
 	n.Decoder.SetMutableSymbols(&n.Data[0], n.Decoder.BlockSize())
@@ -75,6 +79,7 @@ func NewDecoderNode(factory *kodo.DecoderFactory, rate uint64) *Node {
 // factory as an argument, which it uses to create the encoder
 func NewRecoderNode(factory *kodo.DecoderFactory, rate uint64) *Node {
 	n := newNode(rate)
+	n.RxPackets = make([]uint32, 3)
 	n.Decoder = factory.Build()
 	n.Data = make([]byte, n.Decoder.BlockSize())
 	n.Decoder.SetMutableSymbols(&n.Data[0], n.Decoder.BlockSize())
@@ -156,11 +161,11 @@ func (n *Node) RecodeAndSend() {
 				go close(output.In)
 			}
 			return
-		case <-time.After(time.Duration(t) * time.Nanosecond):
-			n.sendPayloads(n.Decoder)
-		case <-n.ResetChan:
+		case <-n.ResetChan: // A reset was triggered
 			n.ResetChan = make(chan struct{})
 			return
+		case <-time.After(time.Duration(t) * time.Nanosecond): // Send a payload
+			n.sendPayloads(n.Decoder)
 		}
 	}
 }
@@ -174,6 +179,8 @@ func (n *Node) ReceiveCodedPackets(wg *sync.WaitGroup, done ...chan<- struct{}) 
 				continue
 			}
 			n.Decoder.ReadPayload(&payload[0])
+			id := payload[len(payload)-1]
+			n.RxPackets[id]++
 			if n.Decoder.IsComplete() {
 				// Close all done channels
 				for _, d := range done {
@@ -217,8 +224,9 @@ func (n *Node) sendPayloads(coder payloadWriter) {
 	for i, out := range n.OutputLinks {
 		if n.OutputLinks[i].DestGone != nil {
 			tmpOutputs = append(tmpOutputs, out)
-			payload := make([]byte, coder.PayloadSize())
+			payload := make([]byte, coder.PayloadSize()+1) // Payload size plus nodeID
 			coder.WritePayload(&payload[0])
+			payload[len(payload)-1] = n.NodeID // Append the nodeID
 			out.In <- payload
 			n.Transmissions++
 		} else {
@@ -227,24 +235,3 @@ func (n *Node) sendPayloads(coder payloadWriter) {
 	}
 	n.OutputLinks = tmpOutputs
 }
-
-// func (n *Node) sendPayloads(coder payloadWriter) {
-// 	if coder.Rank() == 0 {
-// 		return
-// 	}
-
-// 	for i, out := range n.OutputLinks {
-// 		if n.OutputLinks[i].DestGone != nil {
-// 			payload := make([]byte, coder.PayloadSize())
-// 			coder.WritePayload(&payload[0])
-// 			out.In <- payload
-// 			n.Transmissions++
-// 		} else {
-// 			close(out.In)
-// 			n.OutputLinks[i] = n.OutputLinks[len(n.OutputLinks)-1]
-// 			n.OutputLinks[len(n.OutputLinks)-1] = nil
-// 			n.OutputLinks = n.OutputLinks[:len(n.OutputLinks)-1]
-// 			break
-// 		}
-// 	}
-// }

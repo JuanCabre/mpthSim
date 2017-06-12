@@ -16,6 +16,7 @@ import (
 var symbols uint
 var symbolSize uint
 var rate uint64
+var runs uint
 
 // Create user defined flags
 type loss []float64           // Loss probabilities
@@ -70,7 +71,8 @@ func init() {
 
 	flag.UintVar(&symbols, "symbols", 40, "The generation size")
 	flag.UintVar(&symbolSize, "symbolSize", 1000, "The symbol size")
-	flag.Uint64Var(&rate, "rate", 5000, "the transmission rate")
+	flag.Uint64Var(&rate, "rate", 5000, "the transmission rate in Bytes/s")
+	flag.UintVar(&runs, "runs", 1, "the number of runs in the simmulation")
 }
 
 // Verify if the flags given by the user had the right size. Otherwise, set the
