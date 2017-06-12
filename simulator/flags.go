@@ -81,15 +81,15 @@ func verifyFlags() {
 		losses = make([]float64, 6)
 	}
 	if len(delays) != 6 {
-		fmt.Println("flag delays: Incorrect size. Setting it up to the default 0")
+		fmt.Println("flag delays: Incorrect size. Setting it up to the default 0s")
 		delays = make([]time.Duration, 6)
 	}
 	if len(resets) != 3 {
-		fmt.Println("flag resets: Incorrect size. Setting it up to the default 0")
+		fmt.Println("flag resets: Incorrect size. Setting it up to the default 0s")
 		resets = make([]time.Duration, 3)
 	}
 	if len(downtimes) != 3 {
-		fmt.Println("flag downtimes: Incorrect size. Setting it up to the default 0")
+		fmt.Println("flag downtimes: Incorrect size. Setting it up to the default 0s")
 		downtimes = make([]time.Duration, 3)
 	}
 }

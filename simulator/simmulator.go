@@ -1,8 +1,10 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
+	"log"
 	"math/rand"
 	"sync"
 	"time"
@@ -77,6 +79,8 @@ func main() {
 		go r.RecodeAndSend()
 	}
 
+	res := &Result{}
+	start := time.Now()
 	go encoderNode.SendEncodedPackets()
 
 	// Reset the recoders after their time expires
@@ -95,22 +99,33 @@ func main() {
 		recoders[i].AddInput(links[idx])
 
 		// Output link
-		idx = 2*i + 1
-		links[idx] = mpthSim.NewLink(losses[idx], delays[idx])
-		go links[idx].ProcessPackets()
-		recoders[i].AddOutput(links[idx])
+		links[idx+1] = mpthSim.NewLink(losses[idx+1], delays[idx+1])
+		go links[idx+1].ProcessPackets()
+		recoders[i].AddOutput(links[idx+1])
 
 		<-time.After(downtimes[i])
 
 		go recoders[i].RecodeAndSend()
+		decoderNode.AddInput(links[idx+1])
+		encoderNode.AddOutput(links[idx])
 
 	}
-
 	for i := range recoders {
 		reseter(i)
 	}
 
 	wg.Wait()
+
+	runTime := time.Since(start).Seconds()
+	res.Latency = append(res.Latency, runTime)
+	res.RxPackets = append(res.RxPackets, 100)
+
+	myres, err := json.Marshal(res)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(string(myres))
+
 	// Check if we properly decoded the data
 	for i, v := range encoderNode.Data {
 		if v != decoderNode.Data[i] {
@@ -121,13 +136,17 @@ func main() {
 	}
 	fmt.Println("Data decoded correctly")
 	fmt.Println("Encoder Transmissions: ", encoderNode.Transmissions)
-	// fmt.Println("Recoder1 Transmissions: ", recoder1.Transmissions)
-	// fmt.Println("Recoder2 Transmissions: ", recoder2.Transmissions)
-	// fmt.Println("Recoder3 Transmissions: ", recoder3.Transmissions)
+	for i := range recoders {
+		fmt.Printf("Recoder %d sent %d packets\n", i, recoders[i].Transmissions)
+	}
 }
 
-// func Wrapper(f func(), name string, wg *sync.WaitGroup) {
-// 	f()
-// 	fmt.Println(name, "returned")
-// 	wg.Done()
+type Result struct {
+	Latency   []float64 `json:"Latency[s]"`
+	RxPackets []uint32  `json:"RxPackets"`
+}
+
+// func NewResult() *Result {
+// 	r := new(Result)
+// 	r.Latency = make([]float64, 0)
 // }

@@ -145,12 +145,10 @@ func (n *Node) RecodeAndSend() {
 		for payload := range n.Inputs {
 			n.Decoder.ReadPayload(&payload[0])
 			// fmt.Println("Recoder rank: ", n.Decoder.Rank())
-
 		}
 	}()
 
 	for {
-
 		select {
 		case <-n.Done: // The decoder is ready
 			for _, output := range n.OutputLinks {
@@ -176,7 +174,6 @@ func (n *Node) ReceiveCodedPackets(wg *sync.WaitGroup, done ...chan<- struct{}) 
 				continue
 			}
 			n.Decoder.ReadPayload(&payload[0])
-			debugN("Decoder rank: ", n.Decoder.Rank())
 			if n.Decoder.IsComplete() {
 				// Close all done channels
 				for _, d := range done {
