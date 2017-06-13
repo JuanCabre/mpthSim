@@ -2,6 +2,7 @@ package mpthSim
 
 import (
 	"fmt"
+	"log"
 	"sync"
 	"time"
 
@@ -33,6 +34,8 @@ type Node struct {
 	RxPackets []uint32
 
 	Transmissions uint64
+
+	mu sync.Mutex
 }
 
 type payloadWriter interface {
@@ -142,13 +145,14 @@ func (n *Node) SendEncodedPackets() {
 
 func (n *Node) RecodeAndSend() {
 	t := float64(n.Decoder.SymbolSize()) / float64(n.rate) * 1000000000 //nS
-	debugN("Sending a recoded packet every", time.Duration(t)*time.Nanosecond)
 	fmt.Println("Recoder started")
 
 	// Constantly read packets
 	go func() {
 		for payload := range n.Inputs {
+			n.mu.Lock()
 			n.Decoder.ReadPayload(&payload[0])
+			n.mu.Unlock()
 			// fmt.Println("Recoder rank: ", n.Decoder.Rank())
 		}
 	}()
@@ -165,7 +169,9 @@ func (n *Node) RecodeAndSend() {
 			n.ResetChan = make(chan struct{})
 			return
 		case <-time.After(time.Duration(t) * time.Nanosecond): // Send a payload
+			n.mu.Lock()
 			n.sendPayloads(n.Decoder)
+			n.mu.Unlock()
 		}
 	}
 }
@@ -187,6 +193,8 @@ func (n *Node) ReceiveCodedPackets(wg *sync.WaitGroup, done ...chan<- struct{}) 
 					close(d)
 				}
 				doneIsClosed = true
+				log.Println("Decoder is complete!")
+				// break
 			}
 		}
 	}
@@ -194,6 +202,8 @@ func (n *Node) ReceiveCodedPackets(wg *sync.WaitGroup, done ...chan<- struct{}) 
 }
 
 func (n *Node) Reset(factory *kodo.DecoderFactory) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
 	close(n.ResetChan) // Signal a reset
 	fmt.Println("Recoder Reset")
 	for _, input := range n.InputLinks {
@@ -208,7 +218,7 @@ func (n *Node) Reset(factory *kodo.DecoderFactory) {
 	n.OutputLinks = make([]*Link, 0)
 	n.InputLinks = make([]*Link, 0)
 
-	kodo.DeleteDecoder(n.Decoder) // Delete the recoder
+	defer kodo.DeleteDecoder(n.Decoder) // Delete the recoder
 
 	n.Decoder = factory.Build() // Rebuild the recoder
 	n.Data = make([]byte, n.Decoder.BlockSize())
